@@ -11,6 +11,7 @@ import yaml
 import pandas as pd
 from datetime import datetime as dt, timedelta
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 import re
 from collections import OrderedDict
 from itertools import repeat
@@ -18,11 +19,17 @@ from selenium.webdriver.support.ui import WebDriverWait as wait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
-from selenium.webdriver.chrome.options import Options
+
+# Increase maximum width in characters of columns - will put all columns in same line in console readout
+pd.set_option('expand_frame_repr', False)
+# Be able to read entire value in each column (no longer truncating values)
+pd.set_option('display.max_colwidth', -1)
+# Increase number of rows printed out in console
+pd.options.display.max_rows = 200
 
 # Change current working directory
-if os.getcwd()[-6:] == 'Budget':
-    os.chdir(os.getcwd()[0:-6] + 'levitt_pavilion')
+if os.getcwd().split("/")[-1] == 'PycharmProjects':
+    os.chdir(os.getcwd() + '/levitt_pavilion')
 
 # Load in .yml file to retrieve user information for appropriate user
 info = yaml.load(open("email_information_retrieval.yml"), Loader=yaml.FullLoader)
@@ -128,8 +135,12 @@ def send_message(service, user_id, message):
 # options.add_argument('--disable-gpu')
 # options.add_argument("javascript.enabled")
 
+chrome_options = Options()
+# Open tab onto second monitor
+chrome_options.add_argument("--window-position=2000,0")
 # Define Chrome webdriver
-driver = webdriver.Chrome()
+driver = webdriver.Chrome(options=chrome_options)
+#driver = webdriver.Chrome()
 # Supply url
 driver.get(url="https://www.levittdenver.org/")
 
@@ -139,11 +150,23 @@ my_href = driver.find_element_by_xpath('//div[@class="Header-inner Header-inner-
 
 driver.execute_script("window.open('" + my_href +"');")
 
-# Obtain position of current window handle in window handles list
-current_window_handle_index = driver.window_handles.index(driver.current_window_handle)
-# Obtain position of newly opened tab
-new_window_handle_index = current_window_handle_index + 1
-driver.switch_to.window(driver.window_handles[new_window_handle_index])
+free_event_main_window = driver.window_handles[-1]
+
+driver.close()
+
+driver.switch_to.window(free_event_main_window)
+
+
+# # Obtain position of current window handle in window handles list
+# current_window_handle_index = driver.window_handles.index(driver.current_window_handle)
+# # Obtain position of newly opened tab
+# new_window_handle_index = current_window_handle_index + 1
+# driver.switch_to.window(driver.window_handles[new_window_handle_index])
+
+# driver.close()
+#
+# driver.switch_to.window(free_event_main_window)
+
 
 # Check to see if on the correct page (i.e., the free events page)
 if 'free-events' in driver.current_url:
@@ -153,6 +176,176 @@ else:
 
 # Obtain all concert-information
 all_concerts = driver.find_elements_by_xpath('//div[@class="summary-content sqs-gallery-meta-container"]')
+# Create copy
+#all_concerts_copy = all_concerts
+
+elems = driver.find_elements_by_xpath('//div[@class="summary-content sqs-gallery-meta-container"]//div[@class="summary-title"]//a[@href]')
+
+concert_info_list = []
+concert_jpeg_list = []
+concert_info_jpeg_list = []
+for elem in elems:
+    href_details = elem.get_attribute(name='href')
+
+    driver.execute_script("window.open('" + href_details +"');")
+
+    # Obtain position of current window handle in window handles list
+    current_window_handle_index = driver.window_handles.index(driver.current_window_handle)
+    # Obtain position of newly opened tab
+    new_window_handle_index = current_window_handle_index + 1
+    driver.switch_to.window(driver.window_handles[new_window_handle_index])
+
+    concert_info = driver.find_element_by_xpath('//div[@class="eventitem-column-meta"]').text
+    concert_info_list.append([concert_info])
+    concert_jpeg = driver.find_element_by_xpath('//img[@class="thumb-image loaded"]').get_attribute('src')
+    concert_jpeg_list.append([concert_jpeg])
+    concert_info_jpeg_list.append([concert_info, '\n' + driver.find_element_by_xpath('//img[@class="thumb-image loaded"]').get_attribute('src')])
+
+    free_event_main_window = driver.window_handles[0]
+
+    driver.close()
+
+    driver.switch_to.window(free_event_main_window)
+
+# Create list of lists of each event with date and event
+concert_info_list_detailed = []
+for i in range(0, len(concert_info_list)):
+    concert = concert_info_list[i][0].split('\n')
+    concert_info_list_detailed.append(concert)
+# Create DataFrame from list of lists
+concert_info_list_detailed_df = pd.DataFrame(concert_info_list_detailed, columns=['act', 'date', 'time', 'location', 'location_address'])
+
+# Save to csv
+concert_info_list_detailed_df.to_csv("concert_info_list_detailed_df.csv", sep=",", index=False)
+
+# Load in concert_info_list_detailed_df.csv
+concert_info_list_detailed_df = pd.read_csv("concert_info_list_detailed_df.csv", sep=",", header="infer")
+# Rename column (miss named above)
+concert_info_list_detailed_df = concert_info_list_detailed_df.rename(columns={'location_dress': 'location_address'})
+
+
+
+
+
+
+#### Get Riverfront Concert Series (at Commons Park)
+
+# Define Chrome webdriver
+driver = webdriver.Chrome(options=chrome_options)
+# Supply url
+driver.get(url="https://www.google.com/")
+# Find google search bar by name
+search = driver.find_element_by_name('q')
+# Value to search
+value = "riverfront concert series commons park denver"
+# Send search result
+search.send_keys(value)
+# Submit search result
+search.submit()
+
+# Find text 'Search more events' (will list all concerts) and click href
+href_search_more_events = driver.find_element_by_link_text('Search more events').get_attribute('href')
+
+driver.execute_script("window.open('" + href_search_more_events +"');")
+
+# Obtain position of current window handle in window handles list
+current_window_handle_index = driver.window_handles.index(driver.current_window_handle)
+# Obtain position of newly opened tab
+new_window_handle_index = current_window_handle_index + 1
+driver.switch_to.window(driver.window_handles[new_window_handle_index])
+
+import itertools
+
+riverfront_concerts_str = driver.find_element_by_xpath('//div[@jsname="CaV2mb"]').text
+
+riverfront_concerts_list = riverfront_concerts_str.split('\n\n')
+
+for i in range(0, len(riverfront_concerts_list)):
+    riverfront_concerts_list[i] = riverfront_concerts_list[i].split('\n')
+
+duplicate_concert_indexes_to_delete= []
+for i, j in itertools.combinations(range(len(riverfront_concerts_list)), 2):
+    print(i,j)
+    if [riverfront_concerts_list[i][x] for x in [0, 1, 3]] == [riverfront_concerts_list[j][x] for x in [0, 1, 3]]:
+        print(riverfront_concerts_list[i][2])
+        print(riverfront_concerts_list[j][2])
+        if riverfront_concerts_list[i][2].startswith("Riverfront Concert Series"):
+            print("Concert to keep")
+        else:
+            duplicate_concert_indexes_to_delete.append(i)
+        if riverfront_concerts_list[j][2].startswith("Riverfront Concert Series"):
+            print("Concert to keep")
+        else:
+            duplicate_concert_indexes_to_delete.append(j)
+
+# Remove duplicate concert
+if len(duplicate_concert_indexes_to_delete) == 0:
+    print("There are no duplicate concerts from the scrape!")
+elif len(duplicate_concert_indexes_to_delete) == 1:
+    del riverfront_concerts_list[duplicate_concert_indexes_to_delete[0]]
+elif len(duplicate_concert_indexes_to_delete) > 1:
+    for concert_index in sorted(duplicate_concert_indexes_to_delete, reverse=True):
+        del riverfront_concerts_list[concert_index]
+
+# Convert list to DataFrame
+riverfront_concerts_df = pd.DataFrame(riverfront_concerts_list,
+                                      columns = ['month_day_number', 'month', 'act',
+                                                 'weekday_abbrev_and_start_time', 'street_address', 'city_state'])
+
+# Create date column
+riverfront_concerts_df['date'] = riverfront_concerts_df.apply(lambda row: dt.strptime(row['month_day_number']+\
+                                    row['month']+str(dt.today().year), '%d%b%Y'), axis=1)
+
+# Split weekday_abbrev_and_start_time column to get day of week from scraped info and event start time
+riverfront_concerts_df['weekday_abbrev_and_start_time'] = \
+    riverfront_concerts_df.apply(lambda row: row['weekday_abbrev_and_start_time'].split(','), axis=1)
+
+# Day of week scraped column
+riverfront_concerts_df['day_of_week_scraped'] = \
+    riverfront_concerts_df.apply(lambda row: row['weekday_abbrev_and_start_time'][0], axis=1)
+
+# Event start time column
+riverfront_concerts_df['time'] = \
+    riverfront_concerts_df.apply(lambda row: row['weekday_abbrev_and_start_time'][1], axis=1)
+
+# Strip white space from time column
+riverfront_concerts_df['time'] = riverfront_concerts_df['time'].str.strip()
+
+# Split street address column to get location and location address
+riverfront_concerts_df['street_address'] = riverfront_concerts_df['street_address'].str.split(',')
+
+# location column
+riverfront_concerts_df['location'] = \
+    riverfront_concerts_df.apply(lambda row: row['street_address'][0], axis=1)
+
+# location_address column
+riverfront_concerts_df['location_address'] = \
+    riverfront_concerts_df.apply(lambda row: row['street_address'][1], axis=1)
+
+# Strip white space from location_address column
+riverfront_concerts_df['location_address'] = riverfront_concerts_df['location_address'].str.strip()
+
+# Complete location_address column by adding city_state info
+riverfront_concerts_df['location_address'] = \
+    riverfront_concerts_df['location_address'] + ', ' + riverfront_concerts_df['city_state']
+
+# List of column names to delete
+cols_to_delete  = ['month_day_number', 'month', 'weekday_abbrev_and_start_time', 'street_address', 'city_state']
+# Delete columns in list above
+riverfront_concerts_df = riverfront_concerts_df.drop(columns = cols_to_delete)
+
+# Create elegant date
+riverfront_concerts_df['date_elegant'] = riverfront_concerts_df.apply(lambda row: row['date'].strftime("%A, %B") +\
+                                            ' ' + str(row['date'].day) + ", " + str(row['date'].year), axis=1)
+# Save to csv
+riverfront_concerts_df.to_csv("riverfront_concerts_df.csv", sep=",", index=False)
+
+
+
+
+
+
+
 
 # Create list of lists of each event with date and event
 all_concerts_list = []
